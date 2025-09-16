@@ -11,22 +11,23 @@ BREADCRUMB_COLOR = (255, 255, 0)
 TRACK_LINE_COLOR = (200, 200, 100)
 WAYPOINT_COLOR = (0, 255, 0)
 WAYPOINT_LINE_COLOR = (0, 150, 0)
+ACTIVE_LEG_COLOR = (255, 0, 255)
+HEADING_LINE_COLOR = (255, 100, 100, 150)
+ARRIVAL_CIRCLE_COLOR = (0, 255, 255, 100) # Semi-transparent cyan
 
 # --- World Constants ---
 METERS_PER_DEGREE_LAT = 111132.954
 METERS_PER_DEGREE_LON = 111320 * math.cos(math.radians(50.88))
 
 class Camera:
-    """ Manages the view (pan and zoom). All coordinate conversions happen here. """
     def __init__(self, lat, lon):
         self.lat = lat
         self.lon = lon
-        self.lon_span = 0.04 # The longitudinal width of the screen in degrees
-        self.min_lon_span = 0.0001 # Max zoom in
-        self.max_lon_span = 0.2   # Max zoom out
+        self.lon_span = 0.04
+        self.min_lon_span = 0.0001
+        self.max_lon_span = 0.2
 
     def update(self, target_lat, target_lon):
-        # Smoothly follow the target
         self.lat += (target_lat - self.lat) * 0.1
         self.lon += (target_lon - self.lon) * 0.1
 
@@ -47,12 +48,17 @@ class Camera:
         lon = self.lon + (x - SCREEN_WIDTH / 2) / pixels_per_degree_lon
         lat = self.lat - (y - SCREEN_HEIGHT / 2) / pixels_per_degree_lat
         return lat, lon
+        
+    def meters_to_pixels(self, meters):
+        world_width_m = self.lon_span * METERS_PER_DEGREE_LON
+        if world_width_m > 0:
+            return (meters / world_width_m) * SCREEN_WIDTH
+        return 1
 
 class World:
-    """ Manages all simulation-specific elements, like drawing and camera. """
     def __init__(self):
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Vessel Simulator | (M)anual, (A)utohelm, (S)emi-Auto, (W)aypoint")
+        pygame.display.set_caption("Vessel Simulator | (C)lear WPs, (Backspace)Remove Last")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 24)
         self.info_font = pygame.font.Font(None, 30)
@@ -81,10 +87,11 @@ class World:
         self.screen.fill(BACKGROUND_COLOR)
         self._draw_grid()
         self._draw_track()
-        self._draw_waypoints(controller.waypoints)
+        self._draw_waypoints(vessel, controller)
         vessel.draw(self.screen, self.camera)
         self._draw_ui(vessel, controller)
         self._draw_scale_bar()
+        self._draw_heading_line(vessel)
 
     def _draw_grid(self):
         top_left_lat, top_left_lon = self.camera.screen_to_world(0, 0)
@@ -101,9 +108,6 @@ class World:
             start_pos = self.camera.world_to_screen(top_left_lat, lon)
             end_pos = self.camera.world_to_screen(bottom_right_lat, lon)
             pygame.draw.line(self.screen, GRID_COLOR, start_pos, end_pos)
-            label = f"{-lon:.3f}°W" if lon < 0 else f"{lon:.3f}°E"
-            text_surface = self.font.render(label, True, GRID_COLOR)
-            self.screen.blit(text_surface, (start_pos[0] + 5, 10))
 
         lat_span = top_left_lat - bottom_right_lat
         lat_start = math.floor(bottom_right_lat / grid_interval) * grid_interval
@@ -112,9 +116,6 @@ class World:
             start_pos = self.camera.world_to_screen(lat, top_left_lon)
             end_pos = self.camera.world_to_screen(lat, bottom_right_lon)
             pygame.draw.line(self.screen, GRID_COLOR, start_pos, end_pos)
-            label = f"{lat:.3f}°N"
-            text_surface = self.font.render(label, True, GRID_COLOR)
-            self.screen.blit(text_surface, (10, start_pos[1] - 20))
 
     def _draw_track(self):
         if len(self.track_points) > 1:
@@ -124,15 +125,44 @@ class World:
             sx, sy = self.camera.world_to_screen(lat, lon)
             pygame.draw.circle(self.screen, BREADCRUMB_COLOR, (sx, sy), 2)
 
-    def _draw_waypoints(self, waypoints):
+    def _draw_waypoints(self, vessel, controller):
+        waypoints = controller.waypoints
         if not waypoints: return
+        
         if len(waypoints) > 1:
             points = [self.camera.world_to_screen(lat, lon) for lat, lon in waypoints]
             pygame.draw.lines(self.screen, WAYPOINT_LINE_COLOR, False, points, 2)
-        for lat, lon in waypoints:
+        
+        if controller.mode == "WAYPOINT" and controller.current_waypoint_index < len(waypoints):
+            start_idx = controller.current_waypoint_index -1
+            end_idx = controller.current_waypoint_index
+            if start_idx >= 0:
+                start_pos = self.camera.world_to_screen(waypoints[start_idx][0], waypoints[start_idx][1])
+            else:
+                start_pos = self.camera.world_to_screen(vessel.lat, vessel.lon)
+            end_pos = self.camera.world_to_screen(waypoints[end_idx][0], waypoints[end_idx][1])
+            pygame.draw.line(self.screen, ACTIVE_LEG_COLOR, start_pos, end_pos, 3)
+            
+            arrival_radius_pixels = self.camera.meters_to_pixels(controller.WAYPOINT_ARRIVAL_DISTANCE_M)
+            if arrival_radius_pixels > 1:
+                target_surface = pygame.Surface((arrival_radius_pixels*2, arrival_radius_pixels*2), pygame.SRCALPHA)
+                pygame.draw.circle(target_surface, ARRIVAL_CIRCLE_COLOR, (arrival_radius_pixels, arrival_radius_pixels), int(arrival_radius_pixels))
+                self.screen.blit(target_surface, (end_pos[0] - arrival_radius_pixels, end_pos[1] - arrival_radius_pixels))
+
+        for i, (lat, lon) in enumerate(waypoints):
             sx, sy = self.camera.world_to_screen(lat, lon)
-            pygame.draw.circle(self.screen, WAYPOINT_COLOR, (sx, sy), 6)
+            color = ACTIVE_LEG_COLOR if i == controller.current_waypoint_index else WAYPOINT_COLOR
+            pygame.draw.circle(self.screen, color, (sx, sy), 6)
             pygame.draw.circle(self.screen, (0,0,0), (sx, sy), 6, 1)
+            num_surface = self.font.render(str(i + 1), True, TEXT_COLOR)
+            self.screen.blit(num_surface, (sx + 10, sy - 10))
+    
+    def _draw_heading_line(self, vessel):
+        start_pos = self.camera.world_to_screen(vessel.lat, vessel.lon)
+        line_length = 50
+        end_x = start_pos[0] + line_length * math.sin(vessel.heading)
+        end_y = start_pos[1] - line_length * math.cos(vessel.heading)
+        pygame.draw.line(self.screen, HEADING_LINE_COLOR, start_pos, (end_x, end_y), 2)
 
     def _draw_ui(self, vessel, controller):
         current_time = pygame.time.get_ticks()
@@ -141,14 +171,16 @@ class World:
         knots = vessel.speed_mps * 1.94384
         
         mode_text = f"Mode: {controller.mode}"
-        # FIX: Added UI display for SEMI_AUTO mode
         if controller.mode == "AUTOHELM":
              mode_text += f" (Target: {controller.target_heading_deg:.0f}° @ {controller.target_speed_kts:.1f} kts)"
         elif controller.mode == "WAYPOINT" and controller.waypoints:
-             mode_text += f" (WP {min(controller.current_waypoint_index + 1, len(controller.waypoints))}/{len(controller.waypoints)})"
+             wp_text = f" (WP {min(controller.current_waypoint_index + 1, len(controller.waypoints))}/{len(controller.waypoints)})"
+             xt_text = f" (XTE: {controller.cross_track_error_m:.1f}m)"
+             mode_text += wp_text + xt_text
         elif controller.mode == "SEMI_AUTO":
             mode_text += f" (Thrust: {controller.target_thrust*100:.0f}%, Rudder: {controller.target_rudder*100:.0f}%)"
         
+        # FIX: Corrected the typo from 'v' to 'vessel'
         info_text = (
             f"Lat: {vessel.lat:.5f} | Lon: {vessel.lon:.5f} | "
             f"Speed: {knots:.1f} kts | "
@@ -166,6 +198,8 @@ class World:
         world_width_m = self.camera.lon_span * METERS_PER_DEGREE_LON
         target_scale_m = world_width_m / 8.0
         
+        if target_scale_m <= 0: return
+        
         power_of_10 = 10**math.floor(math.log10(target_scale_m))
         relative_value = target_scale_m / power_of_10
         if relative_value < 2: nice_scale_m = 1 * power_of_10
@@ -180,7 +214,8 @@ class World:
         pygame.draw.line(self.screen, TEXT_COLOR, (x, y - 5), (x, y + 5), 2)
         pygame.draw.line(self.screen, TEXT_COLOR, (x + scale_bar_pixels, y - 5), (x + scale_bar_pixels, y + 5), 2)
         
-        label = f"{int(nice_scale_m)} m"
+        label = f"{int(nice_scale_m)} m" if nice_scale_m >=1 else f"{nice_scale_m:.1f} m"
         text_surface = self.font.render(label, True, TEXT_COLOR)
         text_rect = text_surface.get_rect(centerx=x + scale_bar_pixels / 2, y=y - 25)
         self.screen.blit(text_surface, text_rect)
+

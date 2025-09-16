@@ -6,19 +6,20 @@ The codebase is intentionally modular, separating the simulation environment (`w
 
 ## Current Status
 
-The simulator is functional with a physics model and a modular controller supporting multiple modes. The navigation is based on a PID controller for heading adjustments. Recent bug fixes have corrected issues with navigational heading calculations and autopilot/waypoint steering logic.
+The simulator is functional with a physics model and a modular controller supporting multiple modes. The navigation is based on a PID controller for heading adjustments and a track-following algorithm for waypoints. The control scheme has been unified to use the arrow keys across all modes for intuitive operation.
 
 ## Features Implemented
 
-* **Modular Architecture:** Code is split into `main.py`, `world.py`, `vessel.py`, and `controller.py` for clarity and portability.
-* **Geographic Coordinate System:** The world is based on real Latitude and Longitude coordinates, centered on the Southampton area.
-* **Dynamic Camera:** The view follows the vessel and supports zooming with the mouse wheel.
-* **Visual Feedback:** Includes a dynamic scale bar, a continuous vessel track line, and periodic breadcrumbs.
-* **Multiple Control Modes:**
-    * **Manual (M):** Direct, real-time control of thrust and rudder.
-    * **Semi-Auto (S):** Set and hold specific thrust and rudder percentages.
-    * **Autohelm (A):** Maintain a target heading. The target can be set automatically to the current heading on activation and then adjusted.
-    * **Waypoint (W):** Navigate through a sequence of waypoints set by clicking on the map.
+* **Modular Architecture:** Code is split into `main.py`, `world.py`, `vessel.py`, and `controller.py`.
+* **Geographic Coordinate System:** The world is based on real Latitude and Longitude coordinates.
+* **Dynamic Camera:** The view follows the vessel and supports zooming.
+* **Visual Feedback:** Includes a dynamic scale bar, a continuous vessel track line, breadcrumbs, and a heading indicator.
+* **Track-Following Navigation:** The waypoint mode now calculates Cross-Track Error (XTE) to stay on the planned route.
+* **Multiple Control Modes:** A unified control scheme for robust operation.
+    * **Manual (M):** Direct control via arrow keys.
+    * **Semi-Auto (S):** Set-and-hold thrust/rudder via arrow keys.
+    * **Autohelm (A):** Maintain an adjustable heading and speed via arrow keys.
+    * **Waypoint (W):** Navigate a route with adjustable speed via arrow keys.
 
 ## Project Setup and Execution
 
@@ -50,20 +51,21 @@ The simulator is functional with a physics model and a modular controller suppor
 
 ### 3. Running the Simulator
 
-The project uses a `src` directory. To ensure the relative imports work correctly, you must run the application as a module from the **root directory** of the project.
+Run the application as a module from the **root directory** of the project.
 
 ```bash
 python -m src.main
 
+
+
+Simulator Controls
 Key(s)	Mode(s)	Action
-M	Any	Switch to Manual mode.
-S	Any	Switch to Semi-Auto mode.
-A	Any	Switch to Autohelm mode (sets target to current heading).
-W	Any	Switch to Waypoint mode.
+M, S, A, W	Any	Switch to Manual, Semi-Auto, Autohelm, Waypoint mode.
 Up / Down Arrows	Manual	Apply forward / reverse thrust.
+Up / Down Arrows	Semi-Auto	Increase / Decrease target thrust.
+Up / Down Arrows	Autohelm / Waypoint	Increase / Decrease target speed.
 Left / Right Arrows	Manual	Apply port / starboard rudder.
-Left / Right Arrows	Autohelm	Adjust target heading by +/- 0.5 degrees.
-Q / A	Semi-Auto	Increase / Decrease target thrust percentage.
-Z / X	Semi-Auto	Increase / Decrease target rudder percentage.
+Left / Right Arrows	Semi-Auto	Adjust target rudder port / starboard.
+Left / Right Arrows	Autohelm	Adjust target heading.
 Left Mouse Click	Any	Add a waypoint at the cursor's location.
 Mouse Wheel	Any	Zoom the map in or out.
