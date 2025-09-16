@@ -156,17 +156,17 @@ def draw_grid(screen, font, camera):
         text_surface = font.render(label, True, GRID_COLOR)
         screen.blit(text_surface, (10, start_pos[1] - 20))
 
-def draw_track(screen, camera, breadcrumbs):
+def draw_track(screen, camera, breadcrumbs, track_points):
     """ Draws the vessel's track as dots and a solid line. """
-    # Draw dots every few seconds
+    # Draw the continuous line showing the exact path
+    if len(track_points) > 1:
+        points_on_screen = [camera.world_to_screen(lat, lon) for lat, lon in track_points]
+        pygame.draw.lines(screen, TRACK_LINE_COLOR, False, points_on_screen, 1)
+
+    # Draw dots every few seconds on top of the line
     for lat, lon in breadcrumbs:
         sx, sy = camera.world_to_screen(lat, lon)
         pygame.draw.circle(screen, BREADCRUMB_COLOR, (sx, sy), 2)
-
-    # Draw connecting line if there are enough points
-    if len(breadcrumbs) > 1:
-        points_on_screen = [camera.world_to_screen(lat, lon) for lat, lon in breadcrumbs]
-        pygame.draw.lines(screen, TRACK_LINE_COLOR, False, points_on_screen, 1)
 
 def main():
     pygame.init()
@@ -182,7 +182,8 @@ def main():
     camera = Camera(start_lat, start_lon)
 
     # Track variables
-    breadcrumbs = []
+    breadcrumbs = [] # For the 3-second dots
+    track_points = [] # For the continuous line
     last_breadcrumb_time = 0
     BREADCRUMB_INTERVAL_MS = 3000 # 3 seconds
 
@@ -214,7 +215,10 @@ def main():
         vessel.update()
         camera.update(vessel.lat, vessel.lon)
 
-        # Drop a new breadcrumb if enough time has passed
+        # Add a point to the continuous track on every frame
+        track_points.append((vessel.lat, vessel.lon))
+
+        # Drop a new breadcrumb dot if enough time has passed
         current_time = pygame.time.get_ticks()
         if current_time - last_breadcrumb_time > BREADCRUMB_INTERVAL_MS:
             breadcrumbs.append((vessel.lat, vessel.lon))
@@ -223,7 +227,7 @@ def main():
         # --- Drawing ---
         screen.fill(BACKGROUND_COLOR)
         draw_grid(screen, font, camera)
-        draw_track(screen, camera, breadcrumbs) # Draw track under the vessel
+        draw_track(screen, camera, breadcrumbs, track_points) # Draw track under the vessel
         vessel.draw(screen, camera)
 
         # --- UI Text ---
