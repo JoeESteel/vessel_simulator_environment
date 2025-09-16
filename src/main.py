@@ -1,8 +1,9 @@
 import pygame
 import sys
-from world import World
-from vessel import Vessel
-from controller import VesselController
+# The change is here: added a '.' to make the imports relative
+from .world import World
+from .vessel import Vessel
+from .controller import VesselController
 
 def main():
     """ The main entry point for the application. """

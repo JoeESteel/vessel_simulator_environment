@@ -1,111 +1,127 @@
 import math
 import pygame
 
-# --- World Constants ---
-METERS_PER_DEGREE_LAT = 111132.954
-METERS_PER_DEGREE_LON = 111320 * math.cos(math.radians(50.88))
+# A simple PID controller class
+class PID:
+    def __init__(self, Kp, Ki, Kd, setpoint=0):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.setpoint = setpoint
+        self._integral = 0
+        self._previous_error = 0
 
-# --- Helper Functions ---
-def calculate_distance(lat1, lon1, lat2, lon2):
-    """ Calculate distance between two lat/lon points in meters. """
-    delta_lat_m = (lat2 - lat1) * METERS_PER_DEGREE_LAT
-    delta_lon_m = (lon2 - lon1) * METERS_PER_DEGREE_LON
-    return math.sqrt(delta_lat_m**2 + delta_lon_m**2)
-
-def calculate_bearing(lat1, lon1, lat2, lon2):
-    """ Calculate bearing from point 1 to point 2 in radians. """
-    delta_lon = math.radians(lon2 - lon1)
-    lat1_rad = math.radians(lat1)
-    lat2_rad = math.radians(lat2)
-    y = math.sin(delta_lon) * math.cos(lat2_rad)
-    x = math.cos(lat1_rad) * math.sin(lat2_rad) - math.sin(lat1_rad) * math.cos(lat2_rad) * math.cos(delta_lon)
-    # Bearing needs to be returned for standard navigational calculations (North=0, East=90)
-    # The result of atan2 is from -pi to pi, with 0 pointing East. We need to adjust.
-    initial_bearing = math.atan2(y, x)
-    return (initial_bearing + (2 * math.pi)) % (2 * math.pi)
-
+    def update(self, measured_value):
+        error = self.setpoint - measured_value
+        self._integral += error
+        derivative = error - self._previous_error
+        self._previous_error = error
+        return self.Kp * error + self.Ki * self._integral + self.Kd * derivative
+    
+    def reset(self):
+        self._integral = 0
+        self._previous_error = 0
 
 class VesselController:
-    """ The 'Brain' of the vessel. Contains all autonomous logic. """
+    """ The 'brain' of the vessel, containing all autonomous logic. """
     def __init__(self):
-        self.mode = "MANUAL"
+        self.mode = "MANUAL" # MANUAL, AUTOHELM, WAYPOINT, SEMI_AUTO
         
-        self.target_heading_deg = 90
-        self.target_speed_kts = 0
+        # --- Autohelm & Waypoint Targets (0 deg = North) ---
+        self.target_heading_deg = 0.0
+        self.target_heading_rad = math.radians(self.target_heading_deg)
+        self.target_speed_kts = 2.0
+        self.heading_pid = PID(Kp=1.0, Ki=0.1, Kd=0.05)
         
+        # --- Waypoint State ---
         self.waypoints = []
         self.current_waypoint_index = 0
-        self.arrival_radius_m = 5
+        self.WAYPOINT_ARRIVAL_DISTANCE_M = 3.0
 
-        self.heading_kP = 1.5
-        self.speed_kP = 0.8
+        # --- Semi-Auto Targets ---
+        self.target_thrust = 0.0    # -1.0 to 1.0
+        self.target_rudder = 0.0  # -1.0 to 1.0
 
     def set_mode(self, mode):
-        if mode in ["MANUAL", "AUTOHELM", "WAYPOINT"]:
+        if mode in ["MANUAL", "AUTOHELM", "WAYPOINT", "SEMI_AUTO"]:
             self.mode = mode
             print(f"Controller mode set to: {self.mode}")
-            if mode == "WAYPOINT":
-                self.current_waypoint_index = 0
+            self.heading_pid.reset()
+        else:
+            print(f"Warning: Invalid mode '{mode}' requested.")
 
     def add_waypoint(self, lat, lon):
         self.waypoints.append((lat, lon))
-        
+        print(f"Added waypoint: ({lat:.5f}, {lon:.5f})")
+    
     def get_manual_commands(self, keys):
-        """ Processes keyboard input for manual control. """
-        thrust = 0.0
-        if keys[pygame.K_UP]: thrust = 1.0
-        elif keys[pygame.K_DOWN]: thrust = -0.5
+        thrust_cmd = 0.0
+        if keys[pygame.K_UP]: thrust_cmd = 1.0
+        elif keys[pygame.K_DOWN]: thrust_cmd = -0.5
         
-        rudder = 0.0
-        if keys[pygame.K_LEFT]: rudder = 1.0
-        elif keys[pygame.K_RIGHT]: rudder = -1.0
+        rudder_cmd = 0.0
+        if keys[pygame.K_LEFT]: rudder_cmd = 1.0
+        elif keys[pygame.K_RIGHT]: rudder_cmd = -1.0
+        return thrust_cmd, rudder_cmd
+
+    def update(self, lat, lon, heading_rad, speed_mps):
+        """ The main logic loop for the controller. """
+        if self.mode == "AUTOHELM":
+            error = self._wrap_angle(self.target_heading_rad - heading_rad)
+            rudder_cmd = self.heading_pid.update(-error)
+            thrust_cmd = (self.target_speed_kts / 1.94384) / 2.5
+            return max(-1.0, min(1.0, thrust_cmd)), max(-1.0, min(1.0, rudder_cmd))
         
-        return thrust, rudder
-
-    def update(self, current_lat, current_lon, current_heading_rad, current_speed_mps):
-        """ Main logic loop for the controller. Returns thrust and rudder commands. """
-        if self.mode == "MANUAL":
-            return 0, 0 
-
-        elif self.mode == "AUTOHELM":
-            return self._run_autohelm(current_heading_rad, current_speed_mps, math.radians(self.target_heading_deg))
+        elif self.mode == "SEMI_AUTO":
+            return self.target_thrust, self.target_rudder
 
         elif self.mode == "WAYPOINT":
             if not self.waypoints or self.current_waypoint_index >= len(self.waypoints):
-                self.target_speed_kts = 0
-                return self._run_autohelm(current_heading_rad, current_speed_mps, current_heading_rad)
+                return 0.0, 0.0
 
-            target_lat, target_lon = self.waypoints[self.current_waypoint_index]
-            distance_to_wp = calculate_distance(current_lat, current_lon, target_lat, target_lon)
+            target_wp = self.waypoints[self.current_waypoint_index]
+            dist_to_wp = self._calculate_distance(lat, lon, target_wp[0], target_wp[1])
             
-            if distance_to_wp < self.arrival_radius_m:
-                print(f"Arrived at waypoint {self.current_waypoint_index}")
+            if dist_to_wp < self.WAYPOINT_ARRIVAL_DISTANCE_M:
                 self.current_waypoint_index += 1
+                print(f"Arrived at waypoint. Moving to next.")
                 if self.current_waypoint_index >= len(self.waypoints):
-                    self.target_speed_kts = 0
-                    return 0, 0
+                    print("Final waypoint reached.")
+                    return 0.0, 0.0
+                target_wp = self.waypoints[self.current_waypoint_index]
+
+            # --- Heading Calculation (Navigational Standard) ---
+            delta_lon = target_wp[1] - lon
+            delta_lat = target_wp[0] - lat
+            # atan2(dx, dy) gives 0 for North
+            target_heading = math.atan2(delta_lon, delta_lat)
             
-            target_bearing_rad = calculate_bearing(current_lat, current_lon, target_lat, target_lon)
-            return self._run_autohelm(current_heading_rad, current_speed_mps, target_bearing_rad)
-        
-        return 0, 0
+            if target_heading < 0:
+                target_heading += 2 * math.pi
+            
+            self.target_heading_rad = target_heading
+            
+            error = self._wrap_angle(self.target_heading_rad - heading_rad)
+            rudder_cmd = self.heading_pid.update(-error)
+            thrust_cmd = (self.target_speed_kts / 1.94384) / 2.5
+            
+            return max(-1.0, min(1.0, thrust_cmd)), max(-1.0, min(1.0, rudder_cmd))
 
-    def _run_autohelm(self, current_heading_rad, current_speed_mps, target_heading_rad):
-        # Note: Vessel heading is 0=East, Nav bearing is 0=North. We must convert.
-        nav_current_heading_rad = (math.pi/2 - current_heading_rad + 2*math.pi) % (2*math.pi)
-        nav_target_heading_rad = (math.pi/2 - target_heading_rad + 2*math.pi) % (2*math.pi)
+        return 0.0, 0.0
+    
+    def _wrap_angle(self, angle):
+        """ Wrap angle in radians to [-pi, pi]. """
+        return (angle + math.pi) % (2 * math.pi) - math.pi
 
-        heading_error = nav_target_heading_rad - nav_current_heading_rad
-        if heading_error > math.pi: heading_error -= 2 * math.pi
-        if heading_error < -math.pi: heading_error += 2 * math.pi
-        
-        rudder_cmd = self.heading_kP * heading_error
-        
-        target_speed_mps = self.target_speed_kts * 0.514444
-        speed_error = target_speed_mps - current_speed_mps
-        thrust_cmd = self.speed_kP * speed_error
+    def _calculate_distance(self, lat1, lon1, lat2, lon2):
+        """ Calculate distance in meters between two lat/lon points (Haversine formula). """
+        R = 6371e3 # Earth radius in meters
+        phi1 = math.radians(lat1)
+        phi2 = math.radians(lat2)
+        delta_phi = math.radians(lat2 - lat1)
+        delta_lambda = math.radians(lon2 - lon1)
 
-        rudder_cmd = max(-1.0, min(1.0, rudder_cmd))
-        thrust_cmd = max(-0.5, min(1.0, thrust_cmd))
+        a = math.sin(delta_phi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return R * c
 
-        return thrust_cmd, rudder_cmd

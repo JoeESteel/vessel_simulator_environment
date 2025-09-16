@@ -10,7 +10,7 @@ class Vessel:
     def __init__(self, start_lat, start_lon):
         self.lat = start_lat
         self.lon = start_lon
-        self.heading = math.radians(90) # Radians, East
+        self.heading = math.radians(0) # Radians, North (0°)
         self.speed_mps = 0.0
         
         # Control inputs
@@ -49,13 +49,14 @@ class Vessel:
         # Keep heading within 0 to 2*pi
         self.heading %= (2 * math.pi)
 
-        # --- Position Calculation ---
+        # --- Position Calculation (Navigational Standard) ---
         # Convert speed to distance for this frame (assuming 60 FPS)
         distance_meters = self.speed_mps / 60.0
         
-        # Calculate change in lat and lon
-        delta_lat = (distance_meters * math.sin(self.heading)) / self.METERS_PER_DEGREE_LAT
-        delta_lon = (distance_meters * math.cos(self.heading)) / METERS_PER_DEGREE_LON
+        # Calculate change in lat (North/South) and lon (East/West)
+        # 0 rad = North, PI/2 rad = East
+        delta_lat = (distance_meters * math.cos(self.heading)) / self.METERS_PER_DEGREE_LAT
+        delta_lon = (distance_meters * math.sin(self.heading)) / METERS_PER_DEGREE_LON
         
         self.lat += delta_lat
         self.lon += delta_lon
@@ -65,20 +66,25 @@ class Vessel:
         screen_x, screen_y = camera.world_to_screen(self.lat, self.lon)
         
         # Calculate vessel size in pixels
-        meters_per_pixel = camera.lon_span * METERS_PER_DEGREE_LON / camera.world_to_screen(0,0)[0]*2
-        size_in_pixels = self.length_meters / meters_per_pixel
+        world_width_m = camera.lon_span * METERS_PER_DEGREE_LON
+        pixels_per_meter = screen.get_width() / world_width_m
+        size_in_pixels = self.length_meters * pixels_per_meter
         
-        # Define triangle points relative to vessel position and heading
+        # Define triangle points relative to vessel position and NAVIGATIONAL heading
+        # We use sin for x and cos for y, and subtract y because screen coords are inverted
         p1 = (
-            screen_x + size_in_pixels * math.cos(self.heading),
-            screen_y - size_in_pixels * math.sin(self.heading)
+            screen_x + size_in_pixels * math.sin(self.heading),
+            screen_y - size_in_pixels * math.cos(self.heading)
         )
         p2 = (
-            screen_x + size_in_pixels * math.cos(self.heading + math.radians(140)),
-            screen_y - size_in_pixels * math.sin(self.heading + math.radians(140))
+            screen_x + size_in_pixels * 0.6 * math.sin(self.heading + math.radians(140)),
+            screen_y - size_in_pixels * 0.6 * math.cos(self.heading + math.radians(140))
         )
         p3 = (
-            screen_x + size_in_pixels * math.cos(self.heading - math.radians(140)),
-            screen_y - size_in_pixels * math.sin(self.heading - math.radians(140))
+            screen_x + size_in_pixels * 0.6 * math.sin(self.heading - math.radians(140)),
+            screen_y - size_in_pixels * 0.6 * math.cos(self.heading - math.radians(140))
         )
-        pygame.draw.polygon(screen, VESSEL_COLOR, [p1, p2, p3])
+        
+        # The '2' at the end tells pygame to draw an outline of thickness 2
+        pygame.draw.polygon(screen, VESSEL_COLOR, [p1, p2, p3], 2)
+
