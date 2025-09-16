@@ -6,20 +6,25 @@ The codebase is intentionally modular, separating the simulation environment (`w
 
 ## Current Status
 
-The simulator is functional with a physics model and a modular controller supporting multiple modes. The navigation is based on a PID controller for heading adjustments and a track-following algorithm for waypoints. The control scheme has been unified to use the arrow keys across all modes for intuitive operation.
+The simulator is highly functional with a tunable physics model reflecting vessel momentum, and a modular controller supporting multiple modes. The navigation logic now uses PID controllers for both heading and speed, along with a sophisticated, tiered approach for waypoint arrival.
 
 ## Features Implemented
 
 * **Modular Architecture:** Code is split into `main.py`, `world.py`, `vessel.py`, and `controller.py`.
-* **Geographic Coordinate System:** The world is based on real Latitude and Longitude coordinates.
-* **Dynamic Camera:** The view follows the vessel and supports zooming.
-* **Visual Feedback:** Includes a dynamic scale bar, a continuous vessel track line, breadcrumbs, and a heading indicator.
-* **Track-Following Navigation:** The waypoint mode now calculates Cross-Track Error (XTE) to stay on the planned route.
-* **Multiple Control Modes:** A unified control scheme for robust operation.
-    * **Manual (M):** Direct control via arrow keys.
-    * **Semi-Auto (S):** Set-and-hold thrust/rudder via arrow keys.
-    * **Autohelm (A):** Maintain an adjustable heading and speed via arrow keys.
-    * **Waypoint (W):** Navigate a route with adjustable speed via arrow keys.
+* **Realistic Physics:** The vessel model includes proportional drag and momentum for a more authentic feel. Top speed is configurable (~10 kts).
+* **PID Control:** Separate PID controllers for heading and speed ensure precise, stable control without overshooting targets.
+* **Advanced Waypoint Navigation:**
+    * Uses a "go-to" strategy with tiered rudder control (hard, normal, and PID-based) for efficient turning.
+    * Features an automatic speed limiter when approaching waypoints to prevent fly-by errors.
+* **Full Waypoint Management:**
+    * Add waypoints with a mouse click.
+    * Clear the entire route.
+    * Remove the most recently added waypoint.
+* **Enhanced UI & Visualization:**
+    * Displays Cross-Track Error (XTE) from the planned route.
+    * Renders waypoint numbers, the active route leg, and the arrival circle.
+    * Includes a heading line, vessel track, and a dynamic scale bar.
+* **Unified Control Scheme:** The arrow keys are used consistently across all modes for intuitive operation.
 
 ## Project Setup and Execution
 
@@ -57,10 +62,11 @@ Run the application as a module from the **root directory** of the project.
 python -m src.main
 
 
-
 Simulator Controls
 Key(s)	Mode(s)	Action
 M, S, A, W	Any	Switch to Manual, Semi-Auto, Autohelm, Waypoint mode.
+C	Any	Clear all waypoints.
+Backspace	Any	Remove the last waypoint.
 Up / Down Arrows	Manual	Apply forward / reverse thrust.
 Up / Down Arrows	Semi-Auto	Increase / Decrease target thrust.
 Up / Down Arrows	Autohelm / Waypoint	Increase / Decrease target speed.
