@@ -17,28 +17,26 @@ class Vessel:
         self.thrust = 0.0       # Range -1.0 to 1.0
         self.rudder_angle = 0.0 # Range -1.0 to 1.0
 
-        # Physical properties
+        # --- Physical Properties (Updated) ---
         self.length_meters = 1.0
-        self.max_speed_mps = 2.5
+        self.max_speed_mps = 5.14 # Approx. 10 knots
         self.acceleration = 0.02
-        self.drag = 0.01
-        self.turn_rate = 0.05
+        self.drag_coefficient = 0.01 # Proportional drag for coasting effect
+        self.turn_rate = 0.03 # Reduced for more gradual turning
+
         self.METERS_PER_DEGREE_LAT = 111132.954
 
 
     def update(self):
         """ Updates the vessel's state based on physics and control inputs. """
         # --- Speed Calculation ---
+        # Acceleration is proportional to the difference between target and current speed
         target_speed = self.thrust * self.max_speed_mps
         self.speed_mps += (target_speed - self.speed_mps) * self.acceleration
         
-        # Apply drag
-        if self.speed_mps > 0:
-            self.speed_mps -= self.drag
-            if self.speed_mps < 0: self.speed_mps = 0
-        elif self.speed_mps < 0:
-             self.speed_mps += self.drag
-             if self.speed_mps > 0: self.speed_mps = 0
+        # --- Drag Calculation (Updated for Momentum) ---
+        # Apply proportional drag. The vessel now loses a small percentage of its speed each frame.
+        self.speed_mps *= (1.0 - self.drag_coefficient)
 
         # --- Heading Calculation ---
         if abs(self.speed_mps) > 0.1:
@@ -54,7 +52,6 @@ class Vessel:
         distance_meters = self.speed_mps / 60.0
         
         # Calculate change in lat (North/South) and lon (East/West)
-        # 0 rad = North, PI/2 rad = East
         delta_lat = (distance_meters * math.cos(self.heading)) / self.METERS_PER_DEGREE_LAT
         delta_lon = (distance_meters * math.sin(self.heading)) / METERS_PER_DEGREE_LON
         
@@ -71,7 +68,6 @@ class Vessel:
         size_in_pixels = self.length_meters * pixels_per_meter
         
         # Define triangle points relative to vessel position and NAVIGATIONAL heading
-        # We use sin for x and cos for y, and subtract y because screen coords are inverted
         p1 = (
             screen_x + size_in_pixels * math.sin(self.heading),
             screen_y - size_in_pixels * math.cos(self.heading)
@@ -87,4 +83,3 @@ class Vessel:
         
         # The '2' at the end tells pygame to draw an outline of thickness 2
         pygame.draw.polygon(screen, VESSEL_COLOR, [p1, p2, p3], 2)
-
