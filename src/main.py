@@ -1,6 +1,5 @@
 import pygame
 import sys
-# The change is here: added a '.' to make the imports relative
 from .world import World
 from .vessel import Vessel
 from .controller import VesselController
@@ -18,34 +17,49 @@ def main():
     running = True
     while running:
         # --- Event Handling ---
+        # Get key states once per frame for continuous presses
+        keys = pygame.key.get_pressed()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             
-            # Pass events to the world for camera control
             world.handle_event(event)
             
-            # Pass events to the controller for mode changes and waypoint setting
+            # Handle one-press key events for mode changes
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_m: controller.set_mode("MANUAL")
+                if event.key == pygame.K_a: controller.set_mode("AUTOHELM")
+                if event.key == pygame.K_s: controller.set_mode("SEMI_AUTO") # FIX: Added key for SEMI_AUTO
+                if event.key == pygame.K_w: 
+                    controller.set_mode("WAYPOINT")
+                    controller.target_speed_kts = 2.0
+            
+            # Handle mouse clicks for waypoints
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1: # Left click
                     lat, lon = world.camera.screen_to_world(event.pos[0], event.pos[1])
                     controller.add_waypoint(lat, lon)
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_m: controller.set_mode("MANUAL")
-                if event.key == pygame.K_a: controller.set_mode("AUTOHELM")
-                if event.key == pygame.K_w: 
-                    controller.set_mode("WAYPOINT")
-                    controller.target_speed_kts = 2.0
 
         # --- Control Logic ---
+        # FIX: Created a proper if/elif structure for all modes
         if controller.mode == "MANUAL":
-            # Get keyboard state for manual control
-            keys = pygame.key.get_pressed()
             thrust_cmd, rudder_cmd = controller.get_manual_commands(keys)
             vessel.thrust = thrust_cmd
             vessel.rudder_angle = rudder_cmd
-        else:
-            # In autonomous modes, the controller provides the commands
+        
+        elif controller.mode == "SEMI_AUTO":
+            # Handle continuous key presses for adjusting semi-auto targets
+            if keys[pygame.K_q]: controller.target_thrust = min(1.0, controller.target_thrust + 0.01)
+            if keys[pygame.K_a]: controller.target_thrust = max(-1.0, controller.target_thrust - 0.01)
+            if keys[pygame.K_z]: controller.target_rudder = min(1.0, controller.target_rudder + 0.01)
+            if keys[pygame.K_x]: controller.target_rudder = max(-1.0, controller.target_rudder - 0.01)
+
+            thrust_cmd, rudder_cmd = controller.update(None, None, None, None) # state not needed
+            vessel.thrust = thrust_cmd
+            vessel.rudder_angle = rudder_cmd
+
+        else: # AUTOHELM or WAYPOINT
             thrust_cmd, rudder_cmd = controller.update(
                 vessel.lat, vessel.lon, vessel.heading, vessel.speed_mps
             )
@@ -59,7 +73,6 @@ def main():
         # --- Drawing ---
         world.draw(vessel, controller)
         
-        # Update the display
         pygame.display.flip()
         world.clock.tick(60)
 

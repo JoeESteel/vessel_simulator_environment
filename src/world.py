@@ -14,7 +14,6 @@ WAYPOINT_LINE_COLOR = (0, 150, 0)
 
 # --- World Constants ---
 METERS_PER_DEGREE_LAT = 111132.954
-# This is an approximation for the Southampton area
 METERS_PER_DEGREE_LON = 111320 * math.cos(math.radians(50.88))
 
 class Camera:
@@ -37,7 +36,6 @@ class Camera:
 
     def world_to_screen(self, lat, lon):
         pixels_per_degree_lon = SCREEN_WIDTH / self.lon_span
-        # Aspect ratio correction
         pixels_per_degree_lat = pixels_per_degree_lon * (METERS_PER_DEGREE_LAT / METERS_PER_DEGREE_LON)
         x = SCREEN_WIDTH / 2 + (lon - self.lon) * pixels_per_degree_lon
         y = SCREEN_HEIGHT / 2 - (lat - self.lat) * pixels_per_degree_lat
@@ -54,7 +52,7 @@ class World:
     """ Manages all simulation-specific elements, like drawing and camera. """
     def __init__(self):
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Vessel Simulator | (M)anual, (A)utohelm, (W)aypoint")
+        pygame.display.set_caption("Vessel Simulator | (M)anual, (A)utohelm, (S)emi-Auto, (W)aypoint")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 24)
         self.info_font = pygame.font.Font(None, 30)
@@ -74,9 +72,7 @@ class World:
     def update(self, vessel):
         self.camera.update(vessel.lat, vessel.lon)
         current_time = pygame.time.get_ticks()
-        # Store high-resolution track
         self.track_points.append((vessel.lat, vessel.lon))
-        # Store periodic breadcrumbs
         if current_time - self.last_breadcrumb_time > self.BREADCRUMB_INTERVAL_MS:
             self.breadcrumbs.append((vessel.lat, vessel.lon))
             self.last_breadcrumb_time = current_time
@@ -88,10 +84,9 @@ class World:
         self._draw_waypoints(controller.waypoints)
         vessel.draw(self.screen, self.camera)
         self._draw_ui(vessel, controller)
-        self._draw_scale_bar() # New method call
+        self._draw_scale_bar()
 
     def _draw_grid(self):
-        # Determine a sensible grid interval based on zoom level
         top_left_lat, top_left_lon = self.camera.screen_to_world(0, 0)
         bottom_right_lat, bottom_right_lon = self.camera.screen_to_world(SCREEN_WIDTH, SCREEN_HEIGHT)
 
@@ -100,7 +95,6 @@ class World:
         if lon_span > 0.02: grid_interval = 0.01
         if lon_span > 0.2: grid_interval = 0.1
 
-        # Draw longitude lines
         lon_start = math.floor(top_left_lon / grid_interval) * grid_interval
         for i in range(int(lon_span / grid_interval) + 2):
             lon = lon_start + i * grid_interval
@@ -111,7 +105,6 @@ class World:
             text_surface = self.font.render(label, True, GRID_COLOR)
             self.screen.blit(text_surface, (start_pos[0] + 5, 10))
 
-        # Draw latitude lines
         lat_span = top_left_lat - bottom_right_lat
         lat_start = math.floor(bottom_right_lat / grid_interval) * grid_interval
         for i in range(int(lat_span / grid_interval) + 2):
@@ -124,22 +117,18 @@ class World:
             self.screen.blit(text_surface, (10, start_pos[1] - 20))
 
     def _draw_track(self):
-        # Draw the continuous high-res track line
         if len(self.track_points) > 1:
             points = [self.camera.world_to_screen(lat, lon) for lat, lon in self.track_points]
             pygame.draw.lines(self.screen, TRACK_LINE_COLOR, False, points, 1)
-        # Draw the periodic breadcrumbs
         for lat, lon in self.breadcrumbs:
             sx, sy = self.camera.world_to_screen(lat, lon)
             pygame.draw.circle(self.screen, BREADCRUMB_COLOR, (sx, sy), 2)
 
     def _draw_waypoints(self, waypoints):
         if not waypoints: return
-        # Draw line connecting waypoints
         if len(waypoints) > 1:
             points = [self.camera.world_to_screen(lat, lon) for lat, lon in waypoints]
             pygame.draw.lines(self.screen, WAYPOINT_LINE_COLOR, False, points, 2)
-        # Draw individual waypoint circles
         for lat, lon in waypoints:
             sx, sy = self.camera.world_to_screen(lat, lon)
             pygame.draw.circle(self.screen, WAYPOINT_COLOR, (sx, sy), 6)
@@ -150,16 +139,21 @@ class World:
         elapsed_seconds = (current_time - self.start_time) // 1000
         timer_text = f"T: {elapsed_seconds // 60:02d}:{elapsed_seconds % 60:02d}"
         knots = vessel.speed_mps * 1.94384
+        
+        mode_text = f"Mode: {controller.mode}"
+        # FIX: Added UI display for SEMI_AUTO mode
+        if controller.mode == "AUTOHELM":
+             mode_text += f" (Target: {controller.target_heading_deg:.0f}° @ {controller.target_speed_kts:.1f} kts)"
+        elif controller.mode == "WAYPOINT" and controller.waypoints:
+             mode_text += f" (WP {min(controller.current_waypoint_index + 1, len(controller.waypoints))}/{len(controller.waypoints)})"
+        elif controller.mode == "SEMI_AUTO":
+            mode_text += f" (Thrust: {controller.target_thrust*100:.0f}%, Rudder: {controller.target_rudder*100:.0f}%)"
+        
         info_text = (
             f"Lat: {vessel.lat:.5f} | Lon: {vessel.lon:.5f} | "
             f"Speed: {knots:.1f} kts | "
             f"Heading: {math.degrees(vessel.heading) % 360:.0f}°"
         )
-        mode_text = f"Mode: {controller.mode}"
-        if controller.mode == "AUTOHELM":
-             mode_text += f" (Target: {controller.target_heading_deg:.0f}° @ {controller.target_speed_kts:.1f} kts)"
-        elif controller.mode == "WAYPOINT" and controller.waypoints:
-             mode_text += f" (WP {min(controller.current_waypoint_index + 1, len(controller.waypoints))}/{len(controller.waypoints)})"
 
         timer_surface = self.info_font.render(timer_text, True, TEXT_COLOR)
         info_surface = self.info_font.render(info_text, True, TEXT_COLOR)
@@ -167,33 +161,25 @@ class World:
         self.screen.blit(mode_surface, (10, 10))
         self.screen.blit(info_surface, (10, SCREEN_HEIGHT - 35))
         self.screen.blit(timer_surface, (SCREEN_WIDTH - 120, 10))
-
-    def _draw_scale_bar(self):
-        # Determine the real-world width of the screen in meters
-        world_width_m = self.camera.lon_span * METERS_PER_DEGREE_LON
         
-        # Aim for a scale bar that is roughly 1/8th of the screen width
+    def _draw_scale_bar(self):
+        world_width_m = self.camera.lon_span * METERS_PER_DEGREE_LON
         target_scale_m = world_width_m / 8.0
         
-        # Find the nearest "nice" number (e.g., 1, 2, 5, 10, 20, 50, 100...)
         power_of_10 = 10**math.floor(math.log10(target_scale_m))
         relative_value = target_scale_m / power_of_10
         if relative_value < 2: nice_scale_m = 1 * power_of_10
         elif relative_value < 5: nice_scale_m = 2 * power_of_10
         else: nice_scale_m = 5 * power_of_10
         
-        # Calculate how many pixels this "nice" distance represents
         scale_bar_pixels = (nice_scale_m / world_width_m) * SCREEN_WIDTH
         
-        # Define position
         x, y = 30, SCREEN_HEIGHT - 60
         
-        # Draw the line and ticks
         pygame.draw.line(self.screen, TEXT_COLOR, (x, y), (x + scale_bar_pixels, y), 2)
         pygame.draw.line(self.screen, TEXT_COLOR, (x, y - 5), (x, y + 5), 2)
         pygame.draw.line(self.screen, TEXT_COLOR, (x + scale_bar_pixels, y - 5), (x + scale_bar_pixels, y + 5), 2)
         
-        # Draw the label
         label = f"{int(nice_scale_m)} m"
         text_surface = self.font.render(label, True, TEXT_COLOR)
         text_rect = text_surface.get_rect(centerx=x + scale_bar_pixels / 2, y=y - 25)
