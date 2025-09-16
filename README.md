@@ -1,106 +1,154 @@
 Autonomous Vessel Simulator
-This project is a 2D simulation environment built with Pygame to develop and test autonomous navigation algorithms for a marine surface vessel. The simulator operates in a realistic latitude/longitude coordinate system and provides the foundation for building complex autonomous behaviors.
+This project is a Python-based simulator for developing and testing autonomous navigation algorithms for a marine vessel. It uses the Pygame library to create a 2D world with a realistic geographic coordinate system, allowing for the rapid prototyping of control logic before deployment on physical hardware.
 
-Features
-Geographical Coordinate System: The world is based on real latitude and longitude, centered on Southampton, UK.
+The codebase is intentionally modular, separating the simulation environment (world), the vessel's physics (vessel), and the navigation logic (controller) to ensure the control code can be easily transferred to a real-world platform like a Raspberry Pi.
 
-Modular Architecture: The code is cleanly separated into four main modules:
+Current Status
+The simulator is functional with a physics model and a modular controller supporting multiple modes. The navigation is based on a PID controller for heading adjustments. Recent bug fixes have corrected issues with navigational heading calculations and autopilot/waypoint steering logic.
 
-world.py: The simulation environment, graphics, and camera.
+Features Implemented
+Modular Architecture: Code is split into main.py, world.py, vessel.py, and controller.py for clarity and portability.
 
-vessel.py: The vessel's physics model and state.
+Geographic Coordinate System: The world is based on real Latitude and Longitude coordinates, centered on the Southampton area.
 
-controller.py: The "brain" containing all control logic.
+Dynamic Camera: The view follows the vessel and supports zooming with the mouse wheel.
 
-main.py: The main application orchestrator.
-
-Dynamic Camera: The view follows the vessel, with mouse-wheel zooming.
+Visual Feedback: Includes a dynamic scale bar, a continuous vessel track line, and periodic breadcrumbs.
 
 Multiple Control Modes:
 
-(M)anual: Direct keyboard control of thrust and rudder.
+Manual (M): Direct, real-time control of thrust and rudder.
 
-(A)utohelm: Automatically maintains a target heading and speed (currently hardcoded, future work to make adjustable).
+Semi-Auto (S): Set and hold specific thrust and rudder percentages.
 
-(W)aypoint: Navigates a sequence of waypoints set by the user.
+Autohelm (A): Maintain a target heading. The target can be set automatically to the current heading on activation and then adjusted.
 
-Visual Tracking: Displays a continuous track line of the vessel's exact path and periodic "breadcrumbs" to mark its progress over time.
+Waypoint (W): Navigate through a sequence of waypoints set by clicking on the map.
 
-Project Structure
-The project is organized within a src directory to keep the source code neatly separated from project-level files.
-
-vessel_simulator_environment/
-├── .gitignore
-├── README.md
-├── venv/
-└── src/
-    ├── __init__.py  (can be empty)
-    ├── main.py
-    ├── world.py
-    ├── vessel.py
-    └── controller.py
-
-Setup and Installation
-Follow these steps to set up your local development environment.
-
+Project Setup and Execution
 1. Prerequisites
 Python 3.8+
 
 Git
 
-2. Clone the Repository
-Open a terminal (like Git Bash) and clone the repository to your local machine:
+2. Setup
+Clone the Repository:
 
 git clone <your-repository-url>
-cd vessel_simulator_environment
+cd <your-repository-name>
 
-3. Create and Activate Virtual Environment
-It is highly recommended to use a virtual environment to manage project dependencies.
+Create and Activate a Virtual Environment:
 
-# Create the virtual environment
+# Create the venv
 python -m venv venv
-
-# Activate the environment
-# On Windows (Git Bash)
+# Activate it (on Windows Git Bash)
 source venv/Scripts/activate
-# On macOS/Linux
-source venv/bin/activate
 
-You will know the environment is active when you see (venv) at the beginning of your terminal prompt.
-
-4. Install Dependencies
-Install the required Python packages using pip.
+Install Dependencies:
 
 pip install pygame
 
-How to Run the Simulator
-With your virtual environment activated, run the simulator from the root directory of the project using the following command:
+3. Running the Simulator
+The project uses a src directory. To ensure the relative imports work correctly, you must run the application as a module from the root directory of the project.
 
 python -m src.main
 
-This will launch the Pygame window and start the simulation.
+Simulator Controls
+Key(s)
 
-Controls
-Camera Zoom: Use the Mouse Wheel to zoom in and out.
+Mode(s)
 
-Mode Switching:
+Action
 
-M Key: Switch to Manual mode.
+M
 
-A Key: Switch to Autohelm mode.
+Any
 
-W Key: Switch to Waypoint mode.
+Switch to Manual mode.
 
-Manual Mode Controls:
+S
 
-Up Arrow: Apply forward thrust.
+Any
 
-Down Arrow: Apply reverse thrust.
+Switch to Semi-Auto mode.
 
-Left Arrow: Steer left (port).
+A
 
-Right Arrow: Steer right (starboard).
+Any
 
-Waypoint Mode Controls:
+Switch to Autohelm mode (sets target to current heading).
 
-Left Mouse Click: Add a new waypoint at the cursor's location. The vessel will immediately start navigating towards the first waypoint in the list.
+W
+
+Any
+
+Switch to Waypoint mode.
+
+Up / Down Arrows
+
+Manual
+
+Apply forward / reverse thrust.
+
+Left / Right Arrows
+
+Manual
+
+Apply port / starboard rudder.
+
+Left / Right Arrows
+
+Autohelm
+
+Adjust target heading by +/- 0.5 degrees.
+
+Q / A
+
+Semi-Auto
+
+Increase / Decrease target thrust percentage.
+
+Z / X
+
+Semi-Auto
+
+Increase / Decrease target rudder percentage.
+
+Left Mouse Click
+
+Any
+
+Add a waypoint at the cursor's location.
+
+Mouse Wheel
+
+Any
+
+Zoom the map in or out.
+
+Roadmap & Next Steps
+The following features are planned for the next development phase to enhance the navigation capabilities and user feedback.
+
+1. Implement Track-Following Logic
+The current Waypoint mode uses a direct "go-to" approach, constantly pointing the vessel at the next waypoint. This is simple but inefficient, as it doesn't account for drift from wind or current and can lead to "S" curves when arriving at waypoints.
+
+The next evolution is to implement a Track-Following mode.
+
+Concept: The controller will calculate the ideal straight line (the "track" or "leg") between the last waypoint and the active one.
+
+Cross-Track Error (XTE): The primary metric will be the vessel's perpendicular distance from this line, known as the Cross-Track Error.
+
+Control Objective: The PID controller's goal will be to derive a heading that minimizes both the XTE (getting back to the line) and the heading error (pointing along the line). This will result in much smoother and more robust navigation that actively corrects for drift.
+
+2. Enhanced UI & Visualization
+To support the new navigation mode and provide better insight, the UI will be updated.
+
+Display XTE: The on-screen data will be updated to show the current Cross-Track Error in meters when in a navigation mode.
+
+Active Leg Highlighting: The current route leg (from the last waypoint to the next) will be drawn in a brighter, distinct color to make the intended path obvious.
+
+Heading & Bearing Lines:
+
+A "heading line" will be drawn from the front of the vessel to visualize its current heading.
+
+A "bearing line" will be drawn from the vessel directly to the active waypoint, making it easy to see the difference between the vessel's heading and the direct bearing to the target.
