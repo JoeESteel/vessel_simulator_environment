@@ -9,6 +9,8 @@ BACKGROUND_COLOR = (20, 40, 60) # Deep blue
 VESSEL_COLOR = (255, 100, 100) # Red
 TEXT_COLOR = (230, 230, 230)
 GRID_COLOR = (50, 80, 110) # Faded blue for the grid
+BREADCRUMB_COLOR = (255, 255, 0) # Yellow for the track dots
+TRACK_LINE_COLOR = (200, 200, 100) # Faded yellow for the line
 
 # --- World Constants ---
 # These are calculated once at a representative latitude for the area (Southampton)
@@ -154,6 +156,18 @@ def draw_grid(screen, font, camera):
         text_surface = font.render(label, True, GRID_COLOR)
         screen.blit(text_surface, (10, start_pos[1] - 20))
 
+def draw_track(screen, camera, breadcrumbs):
+    """ Draws the vessel's track as dots and a solid line. """
+    # Draw dots every few seconds
+    for lat, lon in breadcrumbs:
+        sx, sy = camera.world_to_screen(lat, lon)
+        pygame.draw.circle(screen, BREADCRUMB_COLOR, (sx, sy), 2)
+
+    # Draw connecting line if there are enough points
+    if len(breadcrumbs) > 1:
+        points_on_screen = [camera.world_to_screen(lat, lon) for lat, lon in breadcrumbs]
+        pygame.draw.lines(screen, TRACK_LINE_COLOR, False, points_on_screen, 1)
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -166,6 +180,14 @@ def main():
     start_lat, start_lon = 50.88, -1.38
     vessel = Vessel(start_lat, start_lon)
     camera = Camera(start_lat, start_lon)
+
+    # Track variables
+    breadcrumbs = []
+    last_breadcrumb_time = 0
+    BREADCRUMB_INTERVAL_MS = 3000 # 3 seconds
+
+    # Timer variables
+    start_time = pygame.time.get_ticks()
 
     running = True
     while running:
@@ -192,14 +214,30 @@ def main():
         vessel.update()
         camera.update(vessel.lat, vessel.lon)
 
+        # Drop a new breadcrumb if enough time has passed
+        current_time = pygame.time.get_ticks()
+        if current_time - last_breadcrumb_time > BREADCRUMB_INTERVAL_MS:
+            breadcrumbs.append((vessel.lat, vessel.lon))
+            last_breadcrumb_time = current_time
+
         # --- Drawing ---
         screen.fill(BACKGROUND_COLOR)
         draw_grid(screen, font, camera)
+        draw_track(screen, camera, breadcrumbs) # Draw track under the vessel
         vessel.draw(screen, camera)
 
+        # --- UI Text ---
+        # Timer
+        elapsed_ms = current_time - start_time
+        elapsed_seconds = elapsed_ms // 1000
+        minutes = elapsed_seconds // 60
+        seconds = elapsed_seconds % 60
+        timer_text = f"T: {minutes:02d}:{seconds:02d}"
+
+        # Vessel Info
         knots = vessel.speed_mps * 1.94384
         info_text = (
-            f"Lat: {vessel.lat:.5f} | Lon: {vessel.lon:.5f} | "
+            f"{timer_text} | Lat: {vessel.lat:.5f} | Lon: {vessel.lon:.5f} | "
             f"Speed: {knots:.1f} kts | "
             f"Heading: {math.degrees(vessel.heading) % 360:.0f}°"
         )
@@ -214,5 +252,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
